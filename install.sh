@@ -8,15 +8,21 @@ NC='\033[0m'
 
 # Função para logging
 log() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
+    local msg="[$(date +'%Y-%m-%d %H:%M:%S')] $1"
+    echo -e "${GREEN}${msg}${NC}"
+    echo "${msg}" >> "$LOG_FILE"
 }
 
 error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    local msg="[ERROR] $1"
+    echo -e "${RED}${msg}${NC}"
+    echo "${msg}" >> "$LOG_FILE"
 }
 
 warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    local msg="[WARNING] $1"
+    echo -e "${YELLOW}${msg}${NC}"
+    echo "${msg}" >> "$LOG_FILE"
 }
 
 # Função para verificar se comando foi executado com sucesso
@@ -24,6 +30,19 @@ check_error() {
     if [ $? -ne 0 ]; then
         error "$1"
         exit 1
+    fi
+}
+
+# Função para instalar pacotes com verificação individual
+install_package() {
+    local package=$1
+    log "Tentando instalar: $package"
+    if sudo pacman -S --needed --noconfirm "$package"; then
+        log "✓ Pacote instalado com sucesso: $package"
+        return 0
+    else
+        error "✗ Falha ao instalar pacote: $package"
+        return 1
     fi
 }
 
@@ -62,34 +81,95 @@ sudo pacman -Syyu --noconfirm || check_error "Falha na atualização do sistema"
 
 # Instalação de pacotes essenciais
 log "Instalando pacotes essenciais..."
-sudo pacman -S --needed --noconfirm \
-    gnome-tweaks \
-    zsh \
-    nerd-fonts-complete \
-    powerlevel10k \
-    gnome-terminal-transparency \
-    dconf-editor \
-    python \
-    python-pip \
-    git \
-    code \
-    firefox \
-    thunderbird \
-    yay \
-    neofetch \
-    htop \
-    docker \
-    docker-compose \
-    base-devel \
-    nodejs \
-    npm \
-    ripgrep \
-    fd \
-    bat \
-    exa \
-    fzf \
-    tldr \
-    || check_error "Falha na instalação dos pacotes essenciais"
+failed_packages=()
+
+# Lista de pacotes essenciais (removido yay da lista pois será instalado separadamente)
+essential_packages=(
+    "gnome-tweaks"
+    "zsh"
+    "nerd-fonts-complete"
+    "powerlevel10k"
+    "gnome-terminal-transparency"
+    "dconf-editor"
+    "python"
+    "python-pip"
+    "git"
+    "code"
+    "firefox"
+    "thunderbird"
+    "neofetch"
+    "htop"
+    "docker"
+    "docker-compose"
+    "base-devel"
+    "nodejs"
+    "npm"
+    "ripgrep"
+    "fd"
+    "bat"
+    "exa"
+    "fzf"
+    "tldr"
+)
+
+# Instalar cada pacote individualmente
+for package in "${essential_packages[@]}"; do
+    if ! install_package "$package"; then
+        failed_packages+=("$package")
+    fi
+done
+
+# Instalação do YAY (após a instalação dos pacotes essenciais)
+log "Instalando YAY (AUR Helper)..."
+if ! command -v yay &> /dev/null; then
+    log "YAY não encontrado, instalando..."
+    # Criar diretório temporário
+    temp_dir=$(mktemp -d)
+    cd "$temp_dir" || exit 1
+    
+    # Clonar e compilar yay
+    log "Clonando repositório do YAY..."
+    git clone https://aur.archlinux.org/yay.git
+    cd yay || exit 1
+    log "Compilando YAY..."
+    makepkg -si --noconfirm
+    
+    # Limpar diretório temporário
+    cd "$HOME" || exit 1
+    rm -rf "$temp_dir"
+    
+    if command -v yay &> /dev/null; then
+        log "✓ YAY instalado com sucesso!"
+    else
+        error "✗ Falha ao instalar YAY"
+        error "Você pode tentar instalar manualmente depois:"
+        error "1. git clone https://aur.archlinux.org/yay.git"
+        error "2. cd yay"
+        error "3. makepkg -si"
+        read -p "Deseja continuar com a instalação? (s/N) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Ss]$ ]]; then
+            error "Instalação abortada pelo usuário"
+            exit 1
+        fi
+    fi
+else
+    log "✓ YAY já está instalado"
+fi
+
+# Verificar se houve falhas
+if [ ${#failed_packages[@]} -ne 0 ]; then
+    error "Os seguintes pacotes falharam durante a instalação:"
+    printf '%s\n' "${failed_packages[@]}" | tee -a "$LOG_FILE"
+    error "Verifique o arquivo de log em $LOG_FILE para mais detalhes"
+    error "Você pode tentar instalar estes pacotes manualmente ou verificar se eles existem no repositório"
+    read -p "Deseja continuar com a instalação? (s/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Ss]$ ]]; then
+        error "Instalação abortada pelo usuário"
+        exit 1
+    fi
+fi
 
 # Habilitar e iniciar Docker
 log "Configurando Docker..."
