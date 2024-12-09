@@ -46,6 +46,34 @@ install_package() {
     fi
 }
 
+# Função para instalar pacote do AUR
+install_aur_package() {
+    local package_name=$1
+    local package_url=$2
+    log "Instalando $package_name do AUR..."
+    
+    # Criar diretório temporário
+    temp_dir=$(mktemp -d)
+    cd "$temp_dir" || exit 1
+    
+    # Clonar e compilar
+    git clone "$package_url"
+    cd "$(basename "$package_url" .git)" || exit 1
+    makepkg -si --noconfirm
+    
+    # Limpar
+    cd "$HOME" || exit 1
+    rm -rf "$temp_dir"
+    
+    if pacman -Qi "$package_name" &> /dev/null; then
+        log "✓ $package_name instalado com sucesso!"
+        return 0
+    else
+        error "✗ Falha ao instalar $package_name"
+        return 1
+    fi
+}
+
 # Criar diretório de logs
 mkdir -p ~/.logs
 LOG_FILE=~/.logs/install_$(date +'%Y%m%d_%H%M%S').log
@@ -233,6 +261,77 @@ else
     log "✓ YAY já está instalado"
 fi
 
+# Instalar extensões do GNOME via AUR
+log "Instalando extensões do GNOME do AUR..."
+declare -A gnome_extensions=(
+    ["gnome-shell-extension-clipboard-indicator"]="https://aur.archlinux.org/gnome-shell-extension-clipboard-indicator.git"
+    ["gnome-shell-extension-openweather"]="https://aur.archlinux.org/gnome-shell-extension-openweather.git"
+    ["gnome-shell-extension-forge"]="https://aur.archlinux.org/gnome-shell-extension-forge.git"
+    ["gnome-shell-extension-material-shell"]="https://aur.archlinux.org/gnome-shell-extension-material-shell.git"
+    ["gnome-shell-extension-dash-to-dock"]="https://aur.archlinux.org/gnome-shell-extension-dash-to-dock.git"
+    ["gnome-shell-extension-tiling-assistant"]="https://aur.archlinux.org/gnome-shell-extension-tiling-assistant.git"
+    ["gnome-shell-extension-panel-corners"]="https://aur.archlinux.org/gnome-shell-extension-panel-corners.git"
+)
+
+for ext_name in "${!gnome_extensions[@]}"; do
+    install_aur_package "$ext_name" "${gnome_extensions[$ext_name]}"
+done
+
+# Instalar e configurar temas
+log "Instalando temas..."
+
+# Ant Theme
+log "Instalando Ant Theme..."
+if [ ! -d "$HOME/.themes/Ant" ]; then
+    temp_dir=$(mktemp -d)
+    cd "$temp_dir" || exit 1
+    git clone https://github.com/EliverLara/Ant.git
+    mkdir -p "$HOME/.themes"
+    cp -r Ant "$HOME/.themes/"
+    cd "$HOME" || exit 1
+    rm -rf "$temp_dir"
+    log "✓ Ant Theme instalado com sucesso!"
+else
+    log "✓ Ant Theme já está instalado"
+fi
+
+# Cursors Theme (Qogir)
+log "Instalando Qogir Cursors..."
+if [ ! -d "$HOME/.icons/Qogir-cursors" ]; then
+    temp_dir=$(mktemp -d)
+    cd "$temp_dir" || exit 1
+    wget https://github.com/vinceliuice/Qogir-icon-theme/releases/download/latest/Qogir-cursors.tar.gz
+    tar xf Qogir-cursors.tar.gz
+    mkdir -p "$HOME/.icons"
+    cp -r Qogir-cursors "$HOME/.icons/"
+    cd "$HOME" || exit 1
+    rm -rf "$temp_dir"
+    log "✓ Qogir Cursors instalado com sucesso!"
+else
+    log "✓ Qogir Cursors já está instalado"
+fi
+
+# Tela Icons
+log "Instalando Tela Icons..."
+if [ ! -d "$HOME/.icons/Tela" ]; then
+    temp_dir=$(mktemp -d)
+    cd "$temp_dir" || exit 1
+    git clone https://github.com/vinceliuice/Tela-icon-theme.git
+    cd Tela-icon-theme
+    ./install.sh -a
+    cd "$HOME" || exit 1
+    rm -rf "$temp_dir"
+    log "✓ Tela Icons instalado com sucesso!"
+else
+    log "✓ Tela Icons já está instalado"
+fi
+
+# Aplicar temas
+log "Aplicando temas..."
+gsettings set org.gnome.desktop.interface gtk-theme "Ant"
+gsettings set org.gnome.desktop.interface icon-theme "Tela"
+gsettings set org.gnome.desktop.interface cursor-theme "Qogir-cursors"
+
 # Verificar se houve falhas
 if [ ${#failed_packages[@]} -ne 0 ]; then
     error "Os seguintes pacotes falharam durante a instalação:"
@@ -257,16 +356,6 @@ sudo usermod -aG docker $USER
 log "Instalando extensões do GNOME..."
 sudo pacman -S --needed --noconfirm \
     gnome-shell-extensions \
-    gnome-shell-extension-clipboard-indicator \
-    gnome-shell-extension-vitals \
-    gnome-shell-extension-openweather \
-    gnome-shell-extension-forge \
-    gnome-shell-extension-blur-my-shell \
-    gnome-shell-extension-material-shell \
-    gnome-shell-extension-dash-to-dock \
-    gnome-shell-extension-tiling-assistant \
-    gnome-shell-extension-panel-corners \
-    gnome-shell-extension-v-shell \
     papirus-icon-theme \
     orchis-theme \
     nordic-theme \
@@ -341,13 +430,26 @@ export PATH="$HOME/.local/bin:$PATH"
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 EOF
 
+# Configurar ZSH como shell padrão
+log "Configurando ZSH como shell padrão..."
+if [ "$SHELL" != "/bin/zsh" ]; then
+    log "Mudando shell padrão para ZSH..."
+    chsh -s /bin/zsh
+    if [ $? -eq 0 ]; then
+        log "✓ Shell padrão alterado para ZSH com sucesso!"
+    else
+        error "✗ Falha ao alterar shell padrão"
+        error "Execute manualmente: chsh -s /bin/zsh"
+    fi
+else
+    log "✓ ZSH já é o shell padrão"
+fi
+
 # Configuração do GNOME
 log "Configurando GNOME..."
-gsettings set org.gnome.desktop.interface gtk-theme "Nordic-darker"
-gsettings set org.gnome.desktop.interface icon-theme "Papirus-Dark"
-gsettings set org.gnome.desktop.interface cursor-theme "Adwaita"
-gsettings set org.gnome.desktop.interface font-name "Noto Sans 11"
-gsettings set org.gnome.desktop.interface monospace-font-name "FiraCode Nerd Font Mono 12"
+gsettings set org.gnome.desktop.interface gtk-theme "Ant"
+gsettings set org.gnome.desktop.interface icon-theme "Tela"
+gsettings set org.gnome.desktop.interface cursor-theme "Qogir-cursors"
 gsettings set org.gnome.desktop.wm.preferences button-layout "appmenu:minimize,maximize,close"
 gsettings set org.gnome.desktop.interface enable-animations true
 gsettings set org.gnome.desktop.interface clock-show-seconds true
@@ -371,12 +473,26 @@ code --install-extension github.copilot
 # Criar diretório de projetos
 mkdir -p ~/projects
 
-# Mensagem final
-log "Instalação concluída com sucesso!"
-log "Por favor, execute os seguintes comandos manualmente após reiniciar:"
-echo "1. chsh -s /bin/zsh"
-echo "2. p10k configure"
-echo "3. Reinicie o sistema para aplicar todas as alterações"
+# Mensagem final com instruções claras
+log "🎉 Instalação concluída com sucesso!"
+echo
+echo -e "${GREEN}=== Próximos Passos ===${NC}"
+echo "1. Reinicie o sistema para aplicar todas as alterações:"
+echo "   sudo reboot"
+echo
+echo "2. Após reiniciar, configure o Powerlevel10k executando:"
+echo "   p10k configure"
+echo
+echo "3. Suas configurações antigas foram salvas em:"
+echo "   - ZSH: ~/.zshrc.backup"
+echo "   - GNOME: ~/.config/backup_*"
+echo
+echo -e "${YELLOW}Dicas:${NC}"
+echo "- Use 'getnf install' para instalar mais fontes Nerd Fonts"
+echo "- Ajuste a transparência do terminal em Preferências do Terminal"
+echo "- Explore as extensões do GNOME em Ajustes > Extensões"
+echo
+echo -e "${GREEN}Aproveite seu novo ambiente! 🚀${NC}"
 
 # Registrar conclusão no log
 echo "Instalação concluída em $(date)" >> "$LOG_FILE"
