@@ -83,13 +83,10 @@ sudo pacman -Syyu --noconfirm || check_error "Falha na atualização do sistema"
 log "Instalando pacotes essenciais..."
 failed_packages=()
 
-# Lista de pacotes essenciais (removido yay da lista pois será instalado separadamente)
+# Lista de pacotes essenciais (removidos os pacotes que precisam de tratamento especial)
 essential_packages=(
     "gnome-tweaks"
     "zsh"
-    "nerd-fonts-complete"
-    "powerlevel10k"
-    "gnome-terminal-transparency"
     "dconf-editor"
     "python"
     "python-pip"
@@ -118,6 +115,85 @@ for package in "${essential_packages[@]}"; do
         failed_packages+=("$package")
     fi
 done
+
+# Instalar getnf para as Nerd Fonts
+log "Instalando getnf para Nerd Fonts..."
+if ! command -v getnf &> /dev/null; then
+    log "Instalando getnf..."
+    curl -fsSL https://raw.githubusercontent.com/getnf/getnf/main/install.sh | bash
+    if [ $? -eq 0 ]; then
+        log "✓ getnf instalado com sucesso!"
+        # Instalar algumas fontes populares
+        log "Instalando fontes Nerd Fonts..."
+        getnf install Meslo
+        getnf install FiraCode
+        getnf install JetBrainsMono
+    else
+        error "✗ Falha ao instalar getnf"
+    fi
+else
+    log "✓ getnf já está instalado"
+fi
+
+# Instalar Oh My Zsh
+log "Instalando Oh My Zsh..."
+if [ ! -d "$HOME/.oh-my-zsh" ]; then
+    sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+    if [ $? -eq 0 ]; then
+        log "✓ Oh My Zsh instalado com sucesso!"
+    else
+        error "✗ Falha ao instalar Oh My Zsh"
+    fi
+else
+    log "✓ Oh My Zsh já está instalado"
+fi
+
+# Instalar Powerlevel10k
+log "Instalando Powerlevel10k..."
+if [ ! -d "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k" ]; then
+    git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k
+    if [ $? -eq 0 ]; then
+        log "✓ Powerlevel10k instalado com sucesso!"
+    else
+        error "✗ Falha ao instalar Powerlevel10k"
+    fi
+else
+    log "✓ Powerlevel10k já está instalado"
+fi
+
+# Instalar gnome-terminal-transparency do AUR
+log "Instalando gnome-terminal-transparency..."
+if ! pacman -Qi gnome-terminal-transparency &> /dev/null; then
+    # Criar diretório temporário
+    temp_dir=$(mktemp -d)
+    cd "$temp_dir" || exit 1
+    
+    # Clonar e compilar gnome-terminal-transparency
+    git clone https://aur.archlinux.org/gnome-terminal-transparency.git
+    cd gnome-terminal-transparency || exit 1
+    makepkg -si --noconfirm
+    
+    # Limpar diretório temporário
+    cd "$HOME" || exit 1
+    rm -rf "$temp_dir"
+    
+    if pacman -Qi gnome-terminal-transparency &> /dev/null; then
+        log "✓ gnome-terminal-transparency instalado com sucesso!"
+    else
+        error "✗ Falha ao instalar gnome-terminal-transparency"
+    fi
+else
+    log "✓ gnome-terminal-transparency já está instalado"
+fi
+
+# Configurar .zshrc para Powerlevel10k
+log "Configurando Powerlevel10k no .zshrc..."
+if [ -f "$HOME/.zshrc" ]; then
+    # Fazer backup do .zshrc existente
+    cp "$HOME/.zshrc" "$HOME/.zshrc.backup"
+    # Atualizar o tema
+    sed -i 's/ZSH_THEME=".*"/ZSH_THEME="powerlevel10k\/powerlevel10k"/' "$HOME/.zshrc"
+fi
 
 # Instalação do YAY (após a instalação dos pacotes essenciais)
 log "Instalando YAY (AUR Helper)..."
